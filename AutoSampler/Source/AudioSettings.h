@@ -71,20 +71,20 @@ public:
                                                                 0, 256, 0, 256, true, true, true, false));
         addAndMakeVisible (audioSetupComp.get());
 
-        addAndMakeVisible (diagnosticsBox);
-        diagnosticsBox.setMultiLine (true);
-        diagnosticsBox.setReturnKeyStartsNewLine (true);
-        diagnosticsBox.setReadOnly (true);
-        diagnosticsBox.setScrollbarsShown (true);
-        diagnosticsBox.setCaretVisible (false);
-        diagnosticsBox.setPopupMenuEnabled (true);
+//        addAndMakeVisible (diagnosticsBox);
+//        diagnosticsBox.setMultiLine (true);
+//        diagnosticsBox.setReturnKeyStartsNewLine (true);
+//        diagnosticsBox.setReadOnly (true);
+//        diagnosticsBox.setScrollbarsShown (true);
+//        diagnosticsBox.setCaretVisible (false);
+//        diagnosticsBox.setPopupMenuEnabled (true);
 
         audioDeviceManager.addChangeListener (this);
 
         logMessage ("Audio device diagnostics:\n");
         dumpDeviceInfo();
 
-        setSize (600, 800);
+        setSize (400, 500);
     }
 
     ~AudioSettingsDemo() override
@@ -94,7 +94,6 @@ public:
 
     void paint (Graphics& g) override
     {
-//        g.fillAll (getUIColourIfAvailable (LookAndFeel_V4::ColourScheme::UIColour::windowBackground));
         g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
     }
 
@@ -150,7 +149,7 @@ private:
 
     void changeListenerCallback (ChangeBroadcaster*) override
     {
-        dumpDeviceInfo();
+//        dumpDeviceInfo();
     }
 
     void lookAndFeelChanged() override
