@@ -3,6 +3,8 @@
 #include <JuceHeader.h>
 #include "AudioSettings.h"
 
+//==============================================================================
+
 class MainComponent  : public juce::AudioAppComponent,
                        public Button::Listener
 {
@@ -18,6 +20,8 @@ public:
 
     void paint (juce::Graphics& g) override;
     void resized() override;
+    void setNoteNumber(int noteNumber);
+    void addMessageToBuffer (const juce::MidiMessage& message);
 
 private:
     enum PlayState
@@ -29,13 +33,20 @@ private:
         LENGTH
     };
     
-    AudioSettingsDemo* settings = nullptr;
-    TextButton recordButton  { "Record" };
-    TextButton playButton { "Play"   };
+    std::unique_ptr<AudioSettingsDemo> settings;
+    TextButton recordButton   { "Record" };
+    TextButton playButton     { "Play"   };
+    TextButton midiButton     { "Midi"   };
+    TextButton saveAudioButton{ "Save"   };
     
     AudioBuffer<float> recordBuffer {2, 2 * 44100};
+    
     int recordBufferPlayHead;
     PlayState playState = PlayState::none;
+    int sampleRate = 44100;
+    MidiBuffer midiBuffer {};
+    File file {"/Users/christiantronhjem/dev/AutoSampler/AutoSampler/demoWaves/testfile.wav"};
 
+    
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

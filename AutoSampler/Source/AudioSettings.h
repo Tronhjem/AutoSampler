@@ -136,6 +136,7 @@ public:
         diagnosticsBox.insertTextAtCaret (m + newLine);
     }
 
+    std::unique_ptr<AudioDeviceSelectorComponent> audioSetupComp;
 private:
     // if this PIP is running inside the demo runner, we'll use the shared device manager instead
 //   #ifndef JUCE_DEMO_RUNNER
@@ -144,7 +145,6 @@ private:
 //    AudioDeviceManager& audioDeviceManager { getSharedAudioDeviceManager() };
 //   #endif
 
-    std::unique_ptr<AudioDeviceSelectorComponent> audioSetupComp;
     TextEditor diagnosticsBox;
 
     void changeListenerCallback (ChangeBroadcaster*) override
