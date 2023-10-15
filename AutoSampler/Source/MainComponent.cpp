@@ -39,13 +39,14 @@ MainComponent::MainComponent()
         saveAudioButton.addListener(this);
         addAndMakeVisible(&saveAudioButton);
     }
+    startTime = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    startTimer (1);
 }
 
 MainComponent::~MainComponent()
 {
     shutdownAudio();
 }
-
 
 void MainComponent::buttonClicked(Button* b)
 {
@@ -82,10 +83,12 @@ void MainComponent::buttonClicked(Button* b)
             recordBufferPlayHead = 0;
         }
     }
+    
     else if (b == &midiButton)
     {
-        setNoteNumber(64);
+        sendNote(64, 2000);
     }
+    
     else if (b == &saveAudioButton)
     {
         file.deleteFile();
@@ -111,29 +114,6 @@ void MainComponent::buttonClicked(Button* b)
 }
 
 
-void MainComponent::setNoteNumber(int noteNumber)
-{
-//    auto message = juce::MidiMessage::noteOn (1, noteNumber, (uint8) 100);
-//    message.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001 - startTime);
-//    addMessageToBuffer(message);
-//
-//    auto messageOff = juce::MidiMessage::noteOff (message.getChannel(), message.getNoteNumber());
-//    messageOff.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001 - startTime);
-//    addMessageToBuffer(messageOff);
-    
-}
-
-void MainComponent::addMessageToBuffer (const juce::MidiMessage& message)
-{
-    auto timestamp = message.getTimeStamp();
-    auto sampleNumber =  (int) (timestamp * sampleRate);
-    
-    auto defaultOut = deviceManager.getDefaultMidiOutput();
-    auto defaultOutIdent = deviceManager.getDefaultMidiOutputIdentifier();
-    auto midiout = MidiOutput::openDevice(defaultOutIdent);
-    midiout->sendMessageNow(message);
-}
-
 //==============================================================================
 void MainComponent::prepareToPlay (int samplesPerBlockExpected, double sampleRate)
 {
@@ -148,54 +128,51 @@ void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& buffe
     {
         case PlayState::recording:
             { // SCOPE START
-                
-            auto* inBuffer = bufferToFill.buffer->getReadPointer (0, bufferToFill.startSample);
-            auto* recordBufferR = recordBuffer.getWritePointer(0);
-            auto* recordBufferL = recordBuffer.getWritePointer(1);
-                
-            for (auto sample = 0; sample < bufferToFill.numSamples; ++sample)
-            {
-                if (recordBufferPlayHead >= recordBuffer.getNumSamples())
-                {
-                    const MessageManagerLock mmLock;
-                    playState = PlayState::none;
-                    recordBufferPlayHead = 0;
+                auto* inBuffer = bufferToFill.buffer->getReadPointer (0, bufferToFill.startSample);
+                auto* recordBufferR = recordBuffer.getWritePointer(0);
+                auto* recordBufferL = recordBuffer.getWritePointer(1);
                     
-                    recordButton.setButtonText("Record");
-                    playButton.setButtonText("Play");
-                    break;
+                for (auto sample = 0; sample < bufferToFill.numSamples; ++sample)
+                {
+                    if (recordBufferPlayHead >= recordBuffer.getNumSamples())
+                    {
+                        const MessageManagerLock mmLock;
+                        playState = PlayState::none;
+                        recordBufferPlayHead = 0;
+                        
+                        recordButton.setButtonText("Record");
+                        playButton.setButtonText("Play");
+                        break;
+                    }
+
+                    recordBufferR[recordBufferPlayHead] = inBuffer[sample] * gain;
+                    recordBufferL[recordBufferPlayHead] = inBuffer[sample] * gain;
+
+                    ++recordBufferPlayHead;
                 }
-
-                recordBufferR[recordBufferPlayHead] = inBuffer[sample] * gain;
-                recordBufferL[recordBufferPlayHead] = inBuffer[sample] * gain;
-
-                ++recordBufferPlayHead;
-            }
-                
             }// SCOPE END
             break;
             
         case PlayState::playing:
             { // SCOPE START
-            auto* recordBufferR = recordBuffer.getReadPointer(0);
-            auto* recordBufferL = recordBuffer.getReadPointer(1);
-                
-            auto* outBufferL = bufferToFill.buffer->getWritePointer (0, bufferToFill.startSample);
-            auto* outBufferR = bufferToFill.buffer->getWritePointer (1, bufferToFill.startSample);
-                
-            for (auto sample = 0; sample < bufferToFill.numSamples; ++sample)
-            {
-                if (recordBufferPlayHead >= recordBuffer.getNumSamples())
+                auto* recordBufferR = recordBuffer.getReadPointer(0);
+                auto* recordBufferL = recordBuffer.getReadPointer(1);
+                    
+                auto* outBufferL = bufferToFill.buffer->getWritePointer (0, bufferToFill.startSample);
+                auto* outBufferR = bufferToFill.buffer->getWritePointer (1, bufferToFill.startSample);
+                    
+                for (auto sample = 0; sample < bufferToFill.numSamples; ++sample)
                 {
-                    recordBufferPlayHead = 0;
+                    if (recordBufferPlayHead >= recordBuffer.getNumSamples())
+                    {
+                        recordBufferPlayHead = 0;
+                    }
+
+                    outBufferL[sample] = recordBufferR[recordBufferPlayHead];
+                    outBufferR[sample] = recordBufferL[recordBufferPlayHead];
+
+                    ++recordBufferPlayHead;
                 }
-
-                outBufferL[sample] = recordBufferR[recordBufferPlayHead];
-                outBufferR[sample] = recordBufferL[recordBufferPlayHead];
-
-                ++recordBufferPlayHead;
-            }
-                
             }// SCOPE END
             break;
             
@@ -206,6 +183,52 @@ void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& buffe
             break;
     }
 }
+
+
+void MainComponent::sendNote (int noteNumber, int lengthInMs)
+{
+    auto message = juce::MidiMessage::noteOn (1, noteNumber, (juce::uint8) 100);
+    message.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001 - startTime);
+    addMessageToBuffer (message);
+   
+    auto messageOff = juce::MidiMessage::noteOff (message.getChannel(), message.getNoteNumber());
+    messageOff.setTimeStamp (message.getTimeStamp() + (lengthInMs * 0.001));
+    addMessageToBuffer (messageOff);
+}
+
+void MainComponent::addMessageToBuffer (const juce::MidiMessage& message)
+{
+    auto timestamp = message.getTimeStamp();
+    auto sampleNumber =  (int) (timestamp * sampleRate);
+    midiBuffer.addEvent (message, sampleNumber);
+}
+
+void MainComponent::timerCallback()
+{
+    auto defaultOutIdent = deviceManager.getDefaultMidiOutputIdentifier();
+    auto midiout = MidiOutput::openDevice(defaultOutIdent);
+   
+    if (midiout == nullptr)
+        return;
+    
+    auto currentTime = juce::Time::getMillisecondCounterHiRes() * 0.001 - startTime;
+    auto currentSampleNumber = (int) (currentTime * sampleRate);     // [4]
+
+    for (const auto metadata : midiBuffer)                           // [5]
+    {
+        if (metadata.samplePosition > currentSampleNumber)           // [6]
+            break;
+
+        auto message = metadata.getMessage();
+        message.setTimeStamp (metadata.samplePosition / sampleRate); // [7]
+//         addMessageToList (message);
+        midiout->sendMessageNow(message);
+    }
+
+    midiBuffer.clear (previousSampleNumber, currentSampleNumber - previousSampleNumber); // [8]
+    previousSampleNumber = currentSampleNumber;                                          // [9]
+}
+
 
 void MainComponent::releaseResources()
 {

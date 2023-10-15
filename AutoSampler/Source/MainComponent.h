@@ -5,11 +5,11 @@
 
 //==============================================================================
 
-class MainComponent  : public juce::AudioAppComponent,
-                       public Button::Listener
+class MainComponent  :  public juce::AudioAppComponent,
+                        public Button::Listener,
+                        public juce::Timer
 {
 public:
-    
     MainComponent();
     ~MainComponent() override;
 
@@ -17,10 +17,11 @@ public:
     void getNextAudioBlock (const juce::AudioSourceChannelInfo& bufferToFill) override;
     void releaseResources() override;
     void buttonClicked(Button* b) override;
-
     void paint (juce::Graphics& g) override;
+    void timerCallback() override;
     void resized() override;
-    void setNoteNumber(int noteNumber);
+    
+    void sendNote(int noteNumber, int lengthInMs);
     void addMessageToBuffer (const juce::MidiMessage& message);
 
 private:
@@ -46,6 +47,8 @@ private:
     int sampleRate = 44100;
     MidiBuffer midiBuffer {};
     File file {"/Users/christiantronhjem/dev/AutoSampler/AutoSampler/demoWaves/testfile.wav"};
+    double startTime = 0.0;
+    int previousSampleNumber = 0;
 
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
