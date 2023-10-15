@@ -39,12 +39,14 @@ MainComponent::MainComponent()
         saveAudioButton.addListener(this);
         addAndMakeVisible(&saveAudioButton);
     }
+    
     startTime = juce::Time::getMillisecondCounterHiRes() * 0.001;
     startTimer (1);
 }
 
 MainComponent::~MainComponent()
 {
+    stopTimer();
     shutdownAudio();
 }
 
@@ -212,23 +214,21 @@ void MainComponent::timerCallback()
         return;
     
     auto currentTime = juce::Time::getMillisecondCounterHiRes() * 0.001 - startTime;
-    auto currentSampleNumber = (int) (currentTime * sampleRate);     // [4]
+    auto currentSampleNumber = (int) (currentTime * sampleRate);
 
-    for (const auto metadata : midiBuffer)                           // [5]
+    for (const auto metadata : midiBuffer)
     {
-        if (metadata.samplePosition > currentSampleNumber)           // [6]
+        if (metadata.samplePosition > currentSampleNumber)
             break;
 
         auto message = metadata.getMessage();
-        message.setTimeStamp (metadata.samplePosition / sampleRate); // [7]
-//         addMessageToList (message);
+        message.setTimeStamp (metadata.samplePosition / sampleRate);
         midiout->sendMessageNow(message);
     }
 
-    midiBuffer.clear (previousSampleNumber, currentSampleNumber - previousSampleNumber); // [8]
-    previousSampleNumber = currentSampleNumber;                                          // [9]
+    midiBuffer.clear (previousSampleNumber, currentSampleNumber - previousSampleNumber);
+    previousSampleNumber = currentSampleNumber;
 }
-
 
 void MainComponent::releaseResources()
 {
@@ -242,6 +242,4 @@ void MainComponent::paint (juce::Graphics& g)
 
 void MainComponent::resized()
 {
-    if (settings != nullptr)
-        settings->resized();
 }
