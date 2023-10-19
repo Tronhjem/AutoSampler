@@ -38,6 +38,8 @@ MainComponent::MainComponent()
         saveAudioButton.setBounds(400, 250, 150, 50);
         saveAudioButton.addListener(this);
         addAndMakeVisible(&saveAudioButton);
+        
+        deviceManager.addChangeListener(this);
     }
     
     startTime = juce::Time::getMillisecondCounterHiRes() * 0.001;
@@ -88,30 +90,42 @@ void MainComponent::buttonClicked(Button* b)
     
     else if (b == &midiButton)
     {
-        sendNote(64, 2000);
+        sendNote(64, NOTE_LENGTH_MS);
     }
     
     else if (b == &saveAudioButton)
     {
-        file.deleteFile();
+        saveBufferToFile();
+    }
+}
 
-        if (auto fileStream = std::unique_ptr<FileOutputStream> (file.createOutputStream()))
-        {
-            std::unique_ptr<AudioFormatWriter> writer;
-            WavAudioFormat wavFormat;
-            writer.reset (wavFormat.createWriterFor (fileStream.get(),
-                                                     (double)sampleRate,
-                                                     recordBuffer.getNumChannels(),
-                                                     16,
-                                                     {},
-                                                     0));
-            
-            if (writer != nullptr)
-                writer->writeFromAudioSampleBuffer (recordBuffer, 0, recordBuffer.getNumSamples());
-            
-            writer.reset(); // to make sure we are closing the writer.
-            fileStream.release(); // properly releae the filestream for delete.
-        }
+void MainComponent::changeListenerCallback (ChangeBroadcaster* source)
+{
+    auto defaultOutIdent = deviceManager.getDefaultMidiOutputIdentifier();
+    midiOut = MidiOutput::openDevice(defaultOutIdent);
+    sampleRate =(int) deviceManager.getAudioDeviceSetup().sampleRate;
+}
+
+void MainComponent::saveBufferToFile()
+{
+    file.deleteFile();
+
+    if (auto fileStream = std::unique_ptr<FileOutputStream> (file.createOutputStream()))
+    {
+        std::unique_ptr<AudioFormatWriter> writer;
+        WavAudioFormat wavFormat;
+        writer.reset (wavFormat.createWriterFor (fileStream.get(),
+                                                 (double)sampleRate,
+                                                 recordBuffer.getNumChannels(),
+                                                 16,
+                                                 {},
+                                                 0));
+        
+        if (writer != nullptr)
+            writer->writeFromAudioSampleBuffer (recordBuffer, 0, recordBuffer.getNumSamples());
+        
+        writer.reset(); // to make sure we are closing the writer.
+        fileStream.release(); // properly releae the filestream for delete.
     }
 }
 
@@ -125,18 +139,23 @@ void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& buffe
 {
     const float gain = 0.5f;
     
-    
     switch (playState)
     {
         case PlayState::recording:
             { // SCOPE START
+                if(firstTime)
+                {
+                    sendNote(64, NOTE_LENGTH_MS);
+                    firstTime = false;
+                }
+                
                 auto* inBuffer = bufferToFill.buffer->getReadPointer (0, bufferToFill.startSample);
                 auto* recordBufferR = recordBuffer.getWritePointer(0);
                 auto* recordBufferL = recordBuffer.getWritePointer(1);
                     
                 for (auto sample = 0; sample < bufferToFill.numSamples; ++sample)
                 {
-                    if (recordBufferPlayHead >= recordBuffer.getNumSamples())
+                    if (recordBufferPlayHead >= BUFFER_LENGTH_SAMPLES)
                     {
                         const MessageManagerLock mmLock;
                         playState = PlayState::none;
@@ -144,6 +163,8 @@ void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& buffe
                         
                         recordButton.setButtonText("Record");
                         playButton.setButtonText("Play");
+                        saveBufferToFile();
+                        firstTime = true;
                         break;
                     }
 
@@ -179,8 +200,6 @@ void MainComponent::getNextAudioBlock (const juce::AudioSourceChannelInfo& buffe
             break;
             
         case PlayState::none:
-            break;
-            
         default:
             break;
     }
@@ -202,15 +221,16 @@ void MainComponent::addMessageToBuffer (const juce::MidiMessage& message)
 {
     auto timestamp = message.getTimeStamp();
     auto sampleNumber =  (int) (timestamp * sampleRate);
-    midiBuffer.addEvent (message, sampleNumber);
+    
+    {
+        const ScopedWriteLock lock {midiBufferLock};
+        midiBuffer.addEvent (message, sampleNumber);
+    }
 }
 
 void MainComponent::timerCallback()
 {
-    auto defaultOutIdent = deviceManager.getDefaultMidiOutputIdentifier();
-    auto midiout = MidiOutput::openDevice(defaultOutIdent);
-   
-    if (midiout == nullptr)
+    if (midiOut == nullptr)
         return;
     
     auto currentTime = juce::Time::getMillisecondCounterHiRes() * 0.001 - startTime;
@@ -218,15 +238,20 @@ void MainComponent::timerCallback()
 
     for (const auto metadata : midiBuffer)
     {
+        ScopedReadLock lock {midiBufferLock};
+
         if (metadata.samplePosition > currentSampleNumber)
             break;
 
         auto message = metadata.getMessage();
         message.setTimeStamp (metadata.samplePosition / sampleRate);
-        midiout->sendMessageNow(message);
+        midiOut->sendMessageNow(message);
     }
 
-    midiBuffer.clear (previousSampleNumber, currentSampleNumber - previousSampleNumber);
+    {
+        ScopedWriteLock lock {midiBufferLock};
+        midiBuffer.clear (previousSampleNumber, currentSampleNumber - previousSampleNumber);
+    }
     previousSampleNumber = currentSampleNumber;
 }
 
